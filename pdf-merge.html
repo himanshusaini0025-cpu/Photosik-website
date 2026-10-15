@@ -821,65 +821,9 @@
   :focus-visible{ outline:2px solid var(--blue-500); outline-offset:2px; }
   @media (prefers-reduced-motion: reduce){ *{ transition:none !important; scroll-behavior:auto !important; } }
 
-  /* ---------- Welcome toast ---------- */
-  .welcome-toast{
-    position:fixed; top:88px; left:50%; z-index:200;
-    display:flex; flex-wrap:nowrap; align-items:center; justify-content:center; gap:10px;
-    text-align:center; white-space:nowrap;
-    background:linear-gradient(90deg, var(--white), var(--blue-050), var(--white));
-    background-size:200% 100%;
-    border:1px solid var(--line-strong);
-    box-shadow:0 10px 32px rgba(11,21,38,0.16);
-    border-radius:999px; padding:30px 140px;
-    font-family:'Inter',sans-serif; font-size:32px; font-weight:700; color:var(--ink);
-    opacity:0; transform:translate(-50%,-16px) scale(.98);
-    transition:opacity .55s ease, transform .55s cubic-bezier(.22,.9,.32,1);
-    pointer-events:none;
-    max-width:calc(100% - 24px); width:max-content;
-  }
-  .welcome-toast.show{
-    opacity:1; transform:translate(-50%,0) scale(1);
-    animation:wtShimmer 3.2s ease-in-out infinite, wtBreathe 2.4s ease-in-out infinite;
-  }
-  .welcome-toast.hide{ opacity:0; transform:translate(-50%,-10px) scale(.95); animation:none; transition:opacity .7s ease, transform .7s ease; }
-  @keyframes wtShimmer{
-    0%{ background-position:0% 50%; }
-    50%{ background-position:100% 50%; }
-    100%{ background-position:0% 50%; }
-  }
-  @keyframes wtBreathe{
-    0%,100%{ box-shadow:0 8px 24px rgba(11,21,38,0.12), 0 0 0 0 rgba(47,111,237,0.18); }
-    50%{ box-shadow:0 8px 26px rgba(11,21,38,0.14), 0 0 0 6px rgba(47,111,237,0); }
-  }
-  .welcome-toast .wt-dot{
-    width:11px; height:11px; border-radius:50%; background:var(--blue-500);
-    box-shadow:0 0 0 0 rgba(47,111,237,0.55);
-    animation:wtPulse 1.6s ease-out infinite;
-    flex-shrink:0;
-  }
-  @keyframes wtPulse{
-    0%{ box-shadow:0 0 0 0 rgba(47,111,237,0.45); }
-    70%{ box-shadow:0 0 0 7px rgba(47,111,237,0); }
-    100%{ box-shadow:0 0 0 0 rgba(47,111,237,0); }
-  }
-  .welcome-toast .wt-emoji{ display:inline-block; animation:wtFloat 1.8s ease-in-out infinite; }
-  .welcome-toast .wt-emoji.wt-right{ animation-delay:.3s; }
-  @keyframes wtFloat{
-    0%,100%{ transform:translateY(0) rotate(0deg); }
-    50%{ transform:translateY(-3px) rotate(-6deg); }
-  }
-  @media (max-width:520px){
-    .welcome-toast{ top:80px; padding:20px 48px; font-size:21px; gap:8px; }
-  }
-  @media (max-width:360px){
-    .welcome-toast{ font-size:17px; padding:16px 32px; gap:7px; }
-  }
 </style>
 </head>
 <body>
-  <div class="welcome-toast" id="welcomeToast" role="status" aria-live="polite">
-    <span class="wt-emoji">🦚</span><span class="wt-dot"></span><span>🌸 Radhe Radhe 🌸</span><span class="wt-emoji wt-right">🦚</span>
-  </div>
 
 <header class="site">
   <div class="wrap nav">
@@ -1187,23 +1131,6 @@
     });
 
     dl.addEventListener('click', function(){ if(mergedBlob) downloadBlob(mergedBlob, 'merged.pdf'); });
-  })();
-
-  /* ================= WELCOME TOAST ================= */
-  (function(){
-    var toast = document.getElementById('welcomeToast');
-    if(!toast) return;
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){ toast.classList.add('show'); });
-    });
-    setTimeout(function(){
-      toast.classList.remove('show');
-      toast.classList.add('hide');
-      toast.addEventListener('transitionend', function remove(){
-        toast.removeEventListener('transitionend', remove);
-        toast.style.display = 'none';
-      });
-    }, 5000);
   })();
 
 })();
