@@ -390,12 +390,27 @@
 
   .itp-thumbs{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
   .itp-thumb{ position:relative; width:84px; height:84px; border-radius:6px; overflow:hidden; border:1px solid var(--line-strong); cursor:grab; flex-shrink:0; background:var(--paper); }
-  .itp-thumb.dragging{ opacity:.4; }
   .itp-thumb img{ width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
   .itp-thumb .thumb-num{ position:absolute; left:4px; bottom:4px; background:rgba(11,21,38,.72); color:#fff; font-size:10.5px; font-weight:700; width:17px; height:17px; border-radius:4px; display:flex; align-items:center; justify-content:center; }
   .itp-thumb .thumb-rm{ position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:rgba(11,21,38,.72); color:#fff; border:none; display:flex; align-items:center; justify-content:center; font-size:11px; line-height:1; padding:0; }
   .itp-thumb .thumb-rm:hover{ background:var(--danger); }
-  .itp-thumb-tools{ display:flex; gap:8px; margin-top:12px; }
+  .itp-thumb-tools{ display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .itp-rearr-btn{ display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 12px; border:1px solid var(--blue-500); border-radius:4px; background:var(--blue-050); color:var(--blue-600); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+  .itp-rearr-btn:hover{ background:var(--blue-100); }
+  .itp-rearr-btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .itp-rearr-bar{ display:none; align-items:center; gap:10px; margin-top:12px; padding:8px 10px; border:1px dashed var(--blue-500); border-radius:6px; background:var(--blue-050); }
+  .itp-rearr-bar.on{ display:flex; }
+  .itp-rearr-hint{ flex:1; font-size:12.5px; color:var(--ink-soft); line-height:1.4; }
+  .rearr-act{ width:32px; height:32px; border-radius:50%; border:none; color:#fff; font-size:16px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; flex-shrink:0; }
+  .rearr-act.ok{ background:var(--ok); }
+  .rearr-act.no{ background:var(--danger); }
+  .rearr-act:hover{ filter:brightness(1.1); }
+  .itp-thumbs.rearranging .itp-thumb{ cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; border:2px solid var(--blue-500); }
+  .itp-thumbs.rearranging .itp-thumb:focus-visible{ outline:3px solid var(--blue-600); outline-offset:2px; }
+  .itp-thumbs.rearranging .thumb-rm{ display:none; }
+  .itp-thumbs.rearranging .thumb-num{ width:20px; height:20px; font-size:12px; }
+  .itp-thumb.drag-src{ opacity:.25; }
+  .itp-thumb.drag-ghost{ position:fixed; z-index:1000; pointer-events:none; opacity:.92; margin:0; transform:scale(1.08); box-shadow:0 10px 26px rgba(11,21,38,.35); cursor:grabbing; }
 
   .itp-opts-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:0 16px; }
   .itp-opts-grid .field{ margin-top:16px; }
@@ -887,11 +902,17 @@
               <strong id="itpSelCount">Selected Images (0)</strong>
               <span class="itp-sel-total mono" id="itpSelTotal">Total: 0 images</span>
             </div>
-            <div class="itp-thumbs" id="itpThumbs"></div>
             <div class="itp-thumb-tools" id="itpThumbTools" style="display:none;">
+              <button type="button" class="itp-rearr-btn" id="itpRearrangeBtn" title="Change the order of images" aria-label="Rearrange images">&#8644; Rearrange</button>
               <button type="button" class="fi-btn" id="itpReverseBtn" title="Reverse order" aria-label="Reverse order">&#8645;</button>
               <button type="button" class="fi-btn" id="itpClearBtn" title="Remove all" aria-label="Remove all">&#128465;</button>
             </div>
+            <div class="itp-rearr-bar" id="itpRearrBar">
+              <span class="itp-rearr-hint">Drag the images to change their order, then tap &#10003; to apply.</span>
+              <button type="button" class="rearr-act ok" id="itpRearrApply" title="Apply new order" aria-label="Apply new order">&#10003;</button>
+              <button type="button" class="rearr-act no" id="itpRearrCancel" title="Cancel" aria-label="Cancel rearranging">&#10005;</button>
+            </div>
+            <div class="itp-thumbs" id="itpThumbs"></div>
             <p class="status-msg" id="itpStatus"></p>
 
             <div class="itp-panel-head" style="justify-content:space-between; margin-top:20px;">
@@ -1265,13 +1286,15 @@
   (function(){
     var images = [];
     var pdfBytesCache = null, pdfDocProxy = null;
-    var currentPage = 1, totalPages = 0, zoom = 100, busy = false, dragId = null, resizeTimer = null;
+    var currentPage = 1, totalPages = 0, zoom = 100, busy = false, resizeTimer = null, rearranging = false, draft = [];
 
     var thumbsEl = document.getElementById('itpThumbs');
     var selHead = document.getElementById('itpSelHead');
     var selCount = document.getElementById('itpSelCount');
     var selTotal = document.getElementById('itpSelTotal');
     var thumbTools = document.getElementById('itpThumbTools');
+    var rearrangeBtn = document.getElementById('itpRearrangeBtn');
+    var rearrBar = document.getElementById('itpRearrBar');
     var status = document.getElementById('itpStatus');
     var createBtn = document.getElementById('itpCreateBtn');
     var previewBtn = document.getElementById('itpPreviewBtn');
@@ -1339,6 +1362,7 @@
         im.src = url;
       });
       function afterLoad(){
+        if(rearranging) exitRearrange(false);
         if(skipped){ status.textContent = skipped + ' file(s) skipped — unsupported type or over 50MB.'; status.className='status-msg err'; }
         renderThumbs();
         regenerate();
@@ -1347,52 +1371,132 @@
 
     function renderThumbs(){
       if(images.length===0){
-        selHead.style.display='none'; thumbsEl.innerHTML=''; thumbTools.style.display='none';
-        createBtn.disabled = true; previewBtn.disabled = true;
+        rearranging = false; draft = [];
+        selHead.style.display='none'; thumbsEl.innerHTML='';
+        updateRearrangeUI();
         return;
       }
+      var list = rearranging ? draft : images;
       selHead.style.display='flex';
       selCount.textContent = 'Selected Images (' + images.length + ')';
       selTotal.textContent = 'Total: ' + images.length + ' image' + (images.length===1?'':'s');
-      thumbTools.style.display='flex';
-      thumbsEl.innerHTML = images.map(function(im,i){
-        return '<div class="itp-thumb" draggable="true" data-id="'+im.id+'">' +
+      thumbsEl.innerHTML = list.map(function(im,i){
+        return '<div class="itp-thumb" data-id="'+im.id+'"' + (rearranging ? ' tabindex="0" role="button" aria-label="Image '+(i+1)+'. Drag, or use arrow keys to move."' : '') + '>' +
           '<img src="'+im.url+'" alt="">' +
           '<span class="thumb-num">'+(i+1)+'</span>' +
           '<button type="button" class="thumb-rm" data-id="'+im.id+'" aria-label="Remove image">&#10005;</button>' +
         '</div>';
       }).join('');
-      createBtn.disabled = false; previewBtn.disabled = false;
+      updateRearrangeUI();
     }
 
+    function updateRearrangeUI(){
+      var has = images.length > 0;
+      thumbsEl.classList.toggle('rearranging', rearranging);
+      rearrBar.classList.toggle('on', rearranging);
+      thumbTools.style.display = (has && !rearranging) ? 'flex' : 'none';
+      rearrangeBtn.disabled = images.length < 2;
+      createBtn.disabled = !has || rearranging;
+      previewBtn.disabled = !has || rearranging;
+      addMoreBtn.disabled = rearranging;
+      resetBtn.disabled = rearranging;
+    }
+
+    /* ---------- Rearrange mode ---------- */
+    function enterRearrange(){
+      if(rearranging || images.length < 2) return;
+      status.textContent=''; status.className='status-msg';
+      draft = images.slice();
+      rearranging = true;
+      renderThumbs();
+    }
+    function exitRearrange(apply){
+      if(!rearranging) return;
+      var changed = false;
+      if(apply){
+        for(var i=0;i<images.length;i++){ if(images[i].id !== draft[i].id){ changed = true; break; } }
+        if(changed) images = draft.slice();
+      }
+      rearranging = false; draft = [];
+      renderThumbs();
+      if(apply && changed){
+        regenerate();
+        status.textContent = 'New order applied.'; status.className='status-msg ok';
+      }
+    }
+    function syncDraftFromDom(){
+      var byId = {};
+      draft.forEach(function(im){ byId[im.id] = im; });
+      draft = Array.prototype.map.call(thumbsEl.children, function(c){ return byId[c.getAttribute('data-id')]; }).filter(Boolean);
+      Array.prototype.forEach.call(thumbsEl.children, function(c,i){
+        var n = c.querySelector('.thumb-num'); if(n) n.textContent = i+1;
+        c.setAttribute('aria-label', 'Image '+(i+1)+'. Drag, or use arrow keys to move.');
+      });
+    }
+
+    rearrangeBtn.addEventListener('click', enterRearrange);
+    document.getElementById('itpRearrApply').addEventListener('click', function(){ exitRearrange(true); });
+    document.getElementById('itpRearrCancel').addEventListener('click', function(){ exitRearrange(false); });
+
     thumbsEl.addEventListener('click', function(e){
-      var rm = e.target.closest('.thumb-rm'); if(!rm) return;
+      var rm = e.target.closest('.thumb-rm'); if(!rm || rearranging) return;
       var id = rm.getAttribute('data-id');
       images = images.filter(function(im){ if(im.id===id){ URL.revokeObjectURL(im.url); return false; } return true; });
       renderThumbs(); regenerate();
     });
 
-    thumbsEl.addEventListener('dragstart', function(e){
+    /* Drag with mouse, pen or finger (pointer events) */
+    thumbsEl.addEventListener('pointerdown', function(e){
+      if(!rearranging) return;
+      if(e.pointerType==='mouse' && e.button!==0) return;
       var t = e.target.closest('.itp-thumb'); if(!t) return;
-      dragId = t.getAttribute('data-id'); t.classList.add('dragging');
-    });
-    thumbsEl.addEventListener('dragend', function(e){
-      var t = e.target.closest('.itp-thumb'); if(t) t.classList.remove('dragging');
-    });
-    thumbsEl.addEventListener('dragover', function(e){ e.preventDefault(); });
-    thumbsEl.addEventListener('drop', function(e){
       e.preventDefault();
-      var t = e.target.closest('.itp-thumb'); if(!t || !dragId) return;
-      var dropId = t.getAttribute('data-id');
-      if(dropId===dragId){ dragId=null; return; }
-      var fromIdx = -1, toIdx = -1;
-      for(var i=0;i<images.length;i++){ if(images[i].id===dragId) fromIdx=i; if(images[i].id===dropId) toIdx=i; }
-      if(fromIdx<0||toIdx<0){ dragId=null; return; }
-      var moved = images.splice(fromIdx,1)[0];
-      images.splice(toIdx,0,moved);
-      dragId = null;
-      renderThumbs(); regenerate();
+      var rect = t.getBoundingClientRect();
+      var offX = e.clientX - rect.left, offY = e.clientY - rect.top;
+      var ghost = t.cloneNode(true);
+      ghost.classList.add('drag-ghost');
+      ghost.style.width = rect.width+'px'; ghost.style.height = rect.height+'px';
+      document.body.appendChild(ghost);
+      t.classList.add('drag-src');
+      function place(x,y){ ghost.style.left = (x-offX)+'px'; ghost.style.top = (y-offY)+'px'; }
+      place(e.clientX, e.clientY);
+
+      function move(ev){
+        place(ev.clientX, ev.clientY);
+        if(ev.clientY < 60) window.scrollBy(0,-14);
+        else if(ev.clientY > window.innerHeight-60) window.scrollBy(0,14);
+        var el = document.elementFromPoint(ev.clientX, ev.clientY);
+        var over = el && el.closest ? el.closest('.itp-thumb') : null;
+        if(!over || over===t || over.parentNode!==thumbsEl) return;
+        var kids = Array.prototype.slice.call(thumbsEl.children);
+        if(kids.indexOf(t) < kids.indexOf(over)) thumbsEl.insertBefore(t, over.nextSibling);
+        else thumbsEl.insertBefore(t, over);
+        syncDraftFromDom();
+      }
+      function end(){
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', end);
+        document.removeEventListener('pointercancel', end);
+        if(ghost.parentNode) ghost.parentNode.removeChild(ghost);
+        t.classList.remove('drag-src');
+        syncDraftFromDom();
+      }
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
     });
+
+    /* Keyboard: arrow keys move the focused image, Esc cancels */
+    thumbsEl.addEventListener('keydown', function(e){
+      if(!rearranging) return;
+      var t = e.target.closest('.itp-thumb'); if(!t) return;
+      var k = e.key, prev = t.previousElementSibling, next = t.nextElementSibling;
+      if((k==='ArrowLeft'||k==='ArrowUp') && prev){ e.preventDefault(); thumbsEl.insertBefore(t, prev); }
+      else if((k==='ArrowRight'||k==='ArrowDown') && next){ e.preventDefault(); thumbsEl.insertBefore(t, next.nextSibling); }
+      else return;
+      syncDraftFromDom(); t.focus();
+    });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape' && rearranging) exitRearrange(false); });
 
     document.getElementById('itpReverseBtn').addEventListener('click', function(){ images.reverse(); renderThumbs(); regenerate(); });
     document.getElementById('itpClearBtn').addEventListener('click', function(){
